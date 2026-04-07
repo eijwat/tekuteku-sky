@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>テクテクの穴 | Tekuteku Pit</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;500&family=Zen+Maru+Gothic:wght@300;400;500&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    background:#faf6f0;
+    min-height:100vh;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    font-family:'Zen Maru Gothic',sans-serif;
+    overflow:hidden;
+  }
+  h1{
+    font-family:'Noto Serif JP',serif;
+    font-weight:200;font-size:clamp(16px,3vw,24px);
+    letter-spacing:.3em;color:#6a8faa;
+    margin-bottom:12px;
+    opacity:0;animation:fi 2s ease .3s forwards;
+  }
+  canvas{display:block;opacity:0;animation:fi 1.5s ease .1s forwards;}
+  .ctrl{
+    display:flex;gap:14px;margin-top:12px;flex-wrap:wrap;
+    justify-content:center;align-items:center;
+    opacity:0;animation:fi 2s ease 1.5s forwards;
+  }
+  .ctrl label{
+    font-size:11px;font-weight:400;color:#8a9aaa;
+    display:flex;align-items:center;gap:6px;letter-spacing:.08em;
+  }
+  input[type="range"]{
+    -webkit-appearance:none;appearance:none;
+    width:80px;height:2px;background:#d8d0c8;outline:none;border-radius:1px;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:10px;height:10px;border-radius:50%;
+    background:#6aacd0;cursor:pointer;
+  }
+  button{
+    background:transparent;border:1.5px solid #c8d8e0;color:#6a8faa;
+    padding:4px 14px;font-family:'Zen Maru Gothic',sans-serif;font-weight:400;
+    font-size:11px;letter-spacing:.15em;cursor:pointer;border-radius:12px;
+    transition:all .3s;
+  }
+  button:hover{background:#e8f0f4;border-color:#6aacd0;}
+  #count{
+    position:fixed;top:16px;right:20px;
+    font-size:11px;font-weight:300;color:#a0b0c0;letter-spacing:.1em;
+    opacity:0;animation:fi 2s ease 2s forwards;
+  }
+  @keyframes fi{to{opacity:1;}}
+</style>
+</head>
+<body>
+<h1>テクテクの穴</h1>
+<canvas id="c"></canvas>
+<div class="ctrl">
+  <button onclick="reset()">はじめから</button>
+  <label>テクテク <input type="range" min="0.1" max="2" step="0.05" value="0.7" id="spd"></label>
+  <label>穴の深さ <input type="range" min="40" max="200" step="5" value="100" id="dep"></label>
+  <label>出現 <input type="range" min="10" max="80" step="5" value="30" id="rate"></label>
+</div>
+<div id="count"></div>
+
+<script>
+const cv=document.getElementById('c');
+const cx=cv.getContext('2d');
+const countEl=document.getElementById('count');
+const dpr=window.devicePixelRatio||1;
+let W,H;
+
+// --- Load tekuteku ---
+const tekuImg=new Image();
+tekuImg.onload=()=>{sz();reset();loop();};
+tekuImg.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAYAAACM/rhtAAAMPUlEQVR4nL1YaWyd1Zl+3nO+7S6+XuOYkMUmK02aZpsk0IY4bSANhUwpslXUCjpi6WhmWqmdTjVVI117Zn7MTAWtKlTJRSNEBMP0uiJksZ2N2IFgAjGhQ8lKQkwc4uXasX1t33u/5Zx3ftzrxFlsyLTlkT7p6vvOPec5z7ueQ5gUTGBAEvEX9vU90qft76UDXqa0LvMVYArSliHPx2w+UGX7295cV3YkACAAUH4GDYBvMjPlx910TCIhUVurJo69OeIsuA48e1dPQ6897UlPSBABMpuG1BqBMKGiNogBe3QkiLD3WpmN5mGPv5wie7bBOog6omOxMfRf+6r7Tq99o3LFZd9amvaDeRmfZxhEJRqsBMlkSPKJWWF55I11sXYiMJgJRDw5QWYBIv21/Rf+ql2Vv5NRpMt0ur2C/H+3TKvHYDfI+EFsSNjrhgKjZkxYy7TlQEqCkoCQOVWYgejwYMaAvpS2InP9iAMW161FACnAzgQoYO/YHDX84477ZxxCnAXqSRuTKgiAPGRZZQEZZhYs7LA59oXwaOf/rJk5kDfPGwGfeXrFgaK/O+6qX3gu6ZgITk8n79eeVmV9iPzjKOxSSGOukU37oWzmnC3ptMn+hRDxsNKCXNYVHplfzLBYnIwUrnC97O5vvXlpySt34wLAYnITMwsi0rN2dD/TE634kUeAAcAYGfRMol4BdrNauaaQFrOy01pWiGix+SX0/u2xeyt+KwCU7+rf3msXb7Gzo6m7Yu73D64f22lRVTaY4HcSgENAeVPvbzsRe0watrUE/bV/uK+8cX0rG5MTzJEkScQLWwZqepV8NB1glZJWhXJCgARI5MzIAcC+B2agQKU/mWZ5LwQBnD52nsyyLIDWsBAkHRNJG9QpOegxBUZ9UNiDKFOaq9JKLPTDRU6Re3loUwGW/u6ekouoA01NME8SRCwA/PSNj4vbVayye9QtjUkuZilJCAgG9faOBYv7ZfRfsiSLyXLANkEEQGh4IM1CeMouKPJtA9rKyUaU2xwUQAFgZ3xE2G2fj9QPjmy+/di4D346QQBIsEQNGER6siECwMzdvS91maWPiMxoEDPRXiT59VWxkW3RwBg+rSPzBsb8RWMsZo15bGioEimBkGEOmkwXZ0Tp/aPVhW/5E0QBpkozk6kJEBpBmNZG6wGMnimgd4tX6v+YcSr8bwPlJ0aswpmFfqp76MFLlURLvFuaP7eGmCjElFF8A3K7upJXDwH5xLpKHWjtnhNA3AYIRBC8I2mJh+YzNt5+yUddHaMRAtOmECTZyKitVddb6bMTHFevrU0A1bl3bW0AqgUSCSR9OVubjgQYhsAl3dBhIjSfUF0n0AhGDfS42W4Fn0KQCYl8VSJSyKl3ZYc04Sne25UFFQBSwAxUEt9f5QPwb9hkGySSn53w5JInWKKWFJALgHN83nnyUOH8bo/mp4GqtOtXBJClilHgGHCYqWxAyZUBDIpR5jSCoNkx7SBqUFexI08ts3HihbsKeoOJa7S2GqiuVlMRvZEgM6EOhHrS3NFgLhuq/UZSyYdGfNztaT0vCBdC5VPF1f8AUAA8gBhgA0AIOa0VYGYUTH9sMER4PyrxepntHfx95QdHqqo2ZK8XY2qC+QgyACw+OPSdi5746TA7S4OwCRBgpTIw/GzSFvyJFNxlCQxlXd1nS5k12RdaCBFAOiRpOpHWnq/DikVVlmmeHy2OBCECGDDHsghr91SphZe/KXt+88yGRf2IswDqgPp6fXOC+V08tvuDimbc9tywEX3AkxZM30VYZ98qMfR/l5F/eHWR0/Xc2sKBgCc443WY2A8YBDzUNjDrlEdLL/ti/aiiDRnNK7KxQkEaiHkjH1ea7tbjG6e9GEwQ6RqCNYmEbKytVQ+2fLj4MKbvGKTIXNIBinX2+Jywjh+bd7J5ddfSe5AauHh085zjABNAvLalcwULonc2zXmXGzpMLFiZ86XkhBbvOtOZBKzd37firGs/Phjgb7LhWMhSHsqk9+q9Rv+PXthQ1XktSc41QJtazlfGmoY/QVOGzaYMz9k9+Oy2vXsjAFC5q+dZ+R5zZE+G79p7YQmYacXenodC+3wO7w94+Z6uh/NzTfTMq4jHBRIs0cpXsgYBqD7Yv2Z6U+otuSdg7GMu2ZPq3tx24YsTeQk0ghLt7aH3dGx7SoRnmCQwh0Z+cfGB4n94tP2+TE2CZQR8OJz0zjvu8KEy6SdBgAEeJjfTBzeTNAmDAIDGSWxeX69RSwobKBhfnFvZaPtq2ds99+/5yh0Y+VfHHcFldireHi1o+u6bZ8tRB+T8EkDl7r6t8jVmas7y7KaB5yUAtLKRT865Oc+csa/Kk3v/VKKj8LHt7xVNQuvTkUhIxHM938Lmvp8bLR7TPuaKnb2/E0AuLn544Nz02I7LCTS5qnDXQE9Dx7lCxFkgHr/q6/EJffA46Qnkr/l9q2AmNLBpACjf1d+GZl87LRle3dK3DgCwcE/fz2VLluVexXe29G8FgIm+MiUJZvqTyI0jkfPdu/ddWuU0pQLsVbp8V7JFAhApRQ8qJnbc4cyqqNiWL0c3ZpCbZXsi/v/U1xtQSwrM4sh9MzoKlXsARDTKcsPXWy8sEVlFCyAlWaxPvryu5AIIQP3kfd9fDG0Qmplihn5ZQsE1wvaHGWujIHAhNMMkpBgA4rfYI/6ZEK/ONQ+zTf99yx2FIoFMwKsMpXEZRGVZzaUBMxHd9Kz9F0d9vs/cUpA+15EO9WSIKjJkrRSGQSfBmpUQ8x89fGkW4nU0niQ/VxAx4ix+vHZBSjJ/BCawwB2iBH6jZEUZq9A5PIwnUF+v8S5uXhE+BwRgssE+oEGsDfG4bW8r8Ea7tNK6F7GfVB/8aA1WkY/EB9afJYXcCurAJhG7RBEQQWmMiH++t2R4rq1+4JhSpJV03suUvnrP/ovLUbvEy8neanwuRPMnuScOny33QQugGRbhpECC5bHNFTtmp/t+ZtkWDSNU0eEWtM5sSf7TU62nyqh+Q3BDrmMWaGXjypNgWZNgCWaRq0L5SjSeyD/DBte3QYKZ3kxF78rYBTFiDUeoQ7mvCZYEYNGOS09Fdo+ksJ9Z7GeONqW6Z+wd/fWWw8kZV3b5p6rELBBvvbZSJVgCTAaA0l3JNrT4KrRzSH/1QPfqGxrWzU3nFvwvlWy97ItvZcmMUGEIZUPJo31bpt1N+eu8xXt61vdbRRttb3Q4wugWjpksRjpraWNkMODUnSWsLQS+DPTYTFel62732VqwwB2/C9TXkyZi7mgwF16uefYj134qcMKYmU2+0v1g+cN0w05qSQkANYc/nvvaYGR3vyiYF3VHkn9cPnJHVVVV1gBQsrPvaLJs2iqkAZiAVACpAOR7YM9lQ0ABCJiRJtCoLbRikimfeUSSdMuR2XP2Gyd+RXXVGvWk1+ztWnOOihoGtfMlJQwU+cMfPmBkvvJie0X/tVLna6JuBG1fR+fC25MStmXYAc5XVlb6SLD84bRLxQ0jRhUPZPywzgw6rPtGIcMSXECMqAJZGoahiQyyHScgUZIVAmTm7mPUqI9srOBri5oFo56ebm5utr+TDW0bjEQXyOyYN93KtG2kvsdf3LSgD3EWN3YtdXVAfb3atLez6uAY3Q4AYaFOUO5cjOaW7iczdqyUQJjFqf/svL/i6b/v5FBsoNP+xDWi533TsqQXGRrKGLYpY2dTBjsmxSxfFoQsNeekZ21Np0ucway/BAmWz5uDjpuFA610oc4cHfz6tE0vAZj8ArOujlFfj9vc7AgQAgJXj5C1dvme3oddCLszkD/Rgc9RnfXmh1XjaQ38cjZlAGQADE0dIx3hoh1zfgZiGQrJMO4n9QowHH51IICQxEqNBSCAtcxfFODGkkbESCTkc1sW9ZebwTOOY4shp2jJH63y3582yl5KW8UlkZBJc033id333n5hPALBTIjHBeIs4swCzKImwTJ3Fmk10NBhNh5fGRDQB80Y1PaXl7Uk/3rF/t7HApLTwSDTEi7A1xwdprphJUnEy5u7v92F6COjrn8nhHBCpnF2Lg396p3NM3fydUfEKZEPwIW7e7/3sVH8fJYFhMwFl9JAlHy1mEY3vr35trbrb/qnsgkBuQuc1vPs/PI8FxlXv916QxGPCwKwbPfFmvI9w69HdgwORHYMZUpbUn9Y3XThm5QfM/Ev/wem5T1Fb3HKPAAAAABJRU5ErkJggg==';
+
+const TEKU_SIZE = 28;
+const GRAVITY = 0.35;
+const BOUNCE = 0.3;
+const FRICTION = 0.985;
+const GROUND_FRICTION = 0.92;
+
+let tekus = [];
+let spawnTimer = 0;
+let totalSpawned = 0;
+let totalEscaped = 0;
+let holeLeft, holeRight, holeBottom, groundY;
+
+function sz() {
+  W = Math.min(window.innerWidth - 20, 1000);
+  H = Math.min(W * 0.45, 400);
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  groundY = H * 0.62;
+  holeLeft = W * 0.38;
+  holeRight = W * 0.62;
+}
+
+class Teku {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.angle = 0;
+    this.r = TEKU_SIZE / 2;
+    this.walking = true; // on ground, walking right
+    this.inHole = false;
+    this.settled = false; // resting in the pile
+    this.floating = false; // flying away!
+    this.floatTimer = 0;
+    this.escaped = false; // walked off right edge
+    this.settledTimer = 0;
+    this.walkSpeed = 0.8 + Math.random() * 0.5;
+    this.bobPhase = Math.random() * Math.PI * 2;
+    this.floatPhase = Math.random() * Math.PI * 2;
+    this.survivedHole = false; // has been through the hole
+    this.id = totalSpawned++;
+  }
+
+  update(dt, others) {
+    const spd = parseFloat(document.getElementById('spd').value);
+    const dep = parseFloat(document.getElementById('dep').value);
+    const realHoleBottom = groundY + dep;
+
+    if (this.escaped) return;
+
+    const ws = this.walkSpeed * spd;
+
+    // === Floating away! ===
+    if (this.floating) {
+      this.floatTimer++;
+      const ft = this.floatTimer;
+      const liftAccel = 0.01 + ft * 0.0003; // gentle increasing lift
+      this.vy -= liftAccel;
+      this.vy *= 0.98; // air drag
+      // Gentle sway
+      this.vx = Math.sin(ft * 0.04 + this.floatPhase) * 0.3;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      // Slow spin
+      this.angle += (0.02 + ft * 0.0002) * (this.floatPhase > Math.PI ? 1 : -1) * dt;
+
+      // Escaped off top
+      if (this.y + this.r < -50) {
+        this.escaped = true;
+        totalEscaped++;
+      }
+      return;
+    }
+
+    // Walking on surface
+    if (this.walking && !this.inHole) {
+      this.vx = ws;
+      this.vy = 0;
+      this.y = groundY - this.r;
+      this.x += this.vx * dt;
+      this.angle += (this.vx / this.r) * 0.5 * dt;
+      this.bobPhase += 0.08 * spd;
+
+      // Reached hole edge?
+      if (this.x + this.r > holeLeft && this.x - this.r < holeRight) {
+        this.walking = false;
+        this.inHole = true;
+        this.vy = 0.5;
+      }
+
+      // Post-hole: start floating at ~75% of remaining distance
+      if (this.survivedHole) {
+        const floatZone = holeRight + (W - holeRight) * 0.45;
+        if (this.x > floatZone) {
+          this.walking = false;
+          this.floating = true;
+          this.vy = -0.3; // initial gentle lift
+          this.floatTimer = 0;
+        }
+      }
+    }
+    // In the hole / falling / physics
+    else {
+      // Gravity
+      this.vy += GRAVITY * dt;
+      this.vx *= FRICTION;
+      this.vy *= FRICTION;
+
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.angle += (this.vx / this.r) * 0.5 * dt;
+
+      // Hole walls
+      if (this.x - this.r < holeLeft && this.x + this.r > holeLeft - 10 && this.y + this.r > groundY) {
+        this.x = holeLeft + this.r;
+        this.vx = Math.abs(this.vx) * BOUNCE;
+      }
+      if (this.x + this.r > holeRight && this.x - this.r < holeRight + 10 && this.y + this.r > groundY) {
+        this.x = holeRight - this.r;
+        this.vx = -Math.abs(this.vx) * BOUNCE;
+      }
+
+      // Hole bottom
+      if (this.y + this.r > realHoleBottom) {
+        this.y = realHoleBottom - this.r;
+        this.vy = -Math.abs(this.vy) * BOUNCE;
+        this.vx *= GROUND_FRICTION;
+        if (Math.abs(this.vy) < 0.3) this.vy = 0;
+      }
+
+      // Ground level (outside hole)
+      if (this.y + this.r > groundY) {
+        if (this.x + this.r < holeLeft || this.x - this.r > holeRight) {
+          this.y = groundY - this.r;
+          this.vy = -Math.abs(this.vy) * BOUNCE;
+          this.vx *= GROUND_FRICTION;
+          if (Math.abs(this.vy) < 0.5) {
+            this.vy = 0;
+            // Landed on ground after hole - start walking again
+            if (this.x - this.r > holeRight) {
+              this.walking = true;
+              this.inHole = false;
+              this.settled = false;
+              this.survivedHole = true;
+              this.vx = ws;
+            }
+          }
+        }
+      }
+
+      // Collision with other tekus
+      for (const o of others) {
+        if (o === this || o.escaped) continue;
+        const dx = this.x - o.x;
+        const dy = this.y - o.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = this.r + o.r;
+        if (dist < minDist && dist > 0.1) {
+          const overlap = minDist - dist;
+          const nx = dx / dist;
+          const ny = dy / dist;
+
+          // Push apart
+          const pushRatio = o.settled ? 0.95 : 0.5;
+          this.x += nx * overlap * pushRatio;
+          this.y += ny * overlap * pushRatio;
+          if (!o.settled) {
+            o.x -= nx * overlap * (1 - pushRatio);
+            o.y -= ny * overlap * (1 - pushRatio);
+          }
+
+          // Bounce velocity
+          const relVx = this.vx - (o.settled ? 0 : o.vx);
+          const relVy = this.vy - (o.settled ? 0 : o.vy);
+          const dot = relVx * nx + relVy * ny;
+          if (dot < 0) {
+            this.vx -= dot * nx * (1 + BOUNCE * 0.5);
+            this.vy -= dot * ny * (1 + BOUNCE * 0.5);
+            if (!o.settled) {
+              o.vx += dot * nx * BOUNCE * 0.3;
+              o.vy += dot * ny * BOUNCE * 0.3;
+            }
+          }
+        }
+      }
+
+      // Check if above hole rim level -> overflow, start walking
+      if (this.y + this.r < groundY && this.inHole) {
+        // Overflowed! Push right
+        if (this.x > (holeLeft + holeRight) / 2) {
+          this.vx += 0.3 * spd;
+        }
+        // If clearly past hole right edge and on ground level
+        if (this.x - this.r > holeRight && Math.abs(this.y - (groundY - this.r)) < 5) {
+          this.walking = true;
+          this.inHole = false;
+          this.settled = false;
+          this.survivedHole = true;
+        }
+      }
+
+      // Settling detection
+      const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+      if (speed < 0.2 && this.inHole) {
+        this.settledTimer++;
+        if (this.settledTimer > 30) this.settled = true;
+      } else {
+        this.settledTimer = 0;
+      }
+
+      // Escaped right (only non-floating)
+      if (!this.floating && this.x - this.r > W + 20) {
+        this.escaped = true;
+        totalEscaped++;
+      }
+    }
+
+    // Keep in bounds horizontally
+    if (this.x - this.r < -30) this.x = -30 + this.r;
+  }
+
+  draw() {
+    if (this.escaped) return;
+    const px = this.x;
+    let py = this.y;
+
+    // Walking bob
+    if (this.walking && !this.floating) {
+      py += Math.sin(this.bobPhase) * 1.5;
+    }
+
+    cx.save();
+
+    // Floating fade
+    if (this.floating) {
+      const fadeStart = 40;
+      if (this.floatTimer > fadeStart) {
+        const alpha = Math.max(0, 1 - (this.floatTimer - fadeStart) / 120);
+        cx.globalAlpha = alpha;
+      }
+    }
+
+    cx.translate(px, py);
+    cx.rotate(this.angle);
+    const s = TEKU_SIZE;
+    cx.drawImage(tekuImg, -s/2, -s/2, s, s);
+    cx.restore();
+  }
+}
+
+function drawSceneBackground() {
+  const dep = parseFloat(document.getElementById('dep').value);
+  const realHoleBottom = groundY + dep;
+
+  // Sky / background
+  cx.fillStyle = '#faf6f0';
+  cx.fillRect(0, 0, W, H);
+
+  // Subtle horizon line
+  const grad = cx.createLinearGradient(0, groundY - 30, 0, groundY);
+  grad.addColorStop(0, 'rgba(200,220,230,0)');
+  grad.addColorStop(1, 'rgba(200,220,230,0.15)');
+  cx.fillStyle = grad;
+  cx.fillRect(0, groundY - 30, W, 30);
+
+  // Hole (dark background, drawn BEFORE tekus)
+  cx.fillStyle = '#3a2a1a';
+  cx.fillRect(holeLeft, groundY, holeRight - holeLeft, realHoleBottom - groundY);
+
+  // Hole bottom line
+  cx.strokeStyle = '#a89878';
+  cx.lineWidth = 2;
+  cx.beginPath();
+  cx.moveTo(holeLeft, realHoleBottom);
+  cx.lineTo(holeRight, realHoleBottom);
+  cx.stroke();
+}
+
+function drawSceneForeground() {
+  const dep = parseFloat(document.getElementById('dep').value);
+  const realHoleBottom = groundY + dep;
+
+  // Ground surface (drawn AFTER tekus — covers tekus walking on ground below surface)
+  cx.fillStyle = '#c8b8a0';
+  cx.fillRect(0, groundY, holeLeft, H - groundY);
+  cx.fillRect(holeRight, groundY, W - holeRight, H - groundY);
+
+  // Hole walls (drawn on top to create clean edges)
+  cx.strokeStyle = '#a89878';
+  cx.lineWidth = 2.5;
+  cx.beginPath();
+  cx.moveTo(holeLeft, groundY);
+  cx.lineTo(holeLeft, realHoleBottom);
+  cx.moveTo(holeRight, realHoleBottom);
+  cx.lineTo(holeRight, groundY);
+  cx.stroke();
+
+  // Ground top line
+  cx.beginPath();
+  cx.moveTo(0, groundY);
+  cx.lineTo(holeLeft, groundY);
+  cx.moveTo(holeRight, groundY);
+  cx.lineTo(W, groundY);
+  cx.stroke();
+
+  // Dirt texture in ground
+  cx.fillStyle = '#b8a890';
+  for (let i = 0; i < 15; i++) {
+    const gx = (i * 73 + 17) % W;
+    const gy = groundY + 8 + (i * 31) % 20;
+    if (gx < holeLeft || gx > holeRight) {
+      cx.fillRect(gx, gy, 12 + (i % 5) * 3, 2);
+    }
+  }
+}
+
+function reset() {
+  tekus = [];
+  spawnTimer = 0;
+  totalSpawned = 0;
+  totalEscaped = 0;
+}
+
+function loop() {
+  const spd = parseFloat(document.getElementById('spd').value);
+  const rate = parseFloat(document.getElementById('rate').value);
+
+  // Spawn new tekuteku
+  spawnTimer++;
+  if (spawnTimer >= rate / spd) {
+    spawnTimer = 0;
+    tekus.push(new Teku(-TEKU_SIZE, groundY - TEKU_SIZE / 2));
+  }
+
+  // Update
+  for (const t of tekus) t.update(1, tekus);
+
+  // Remove escaped
+  tekus = tekus.filter(t => !t.escaped || t.x < W + 100);
+
+  // === Draw order: background → ALL tekus → foreground ===
+
+  // 1. Background (sky + hole dark area)
+  drawSceneBackground();
+
+  // 2. ALL tekus — no clipping, no separation
+  //    Sort by y so deeper ones draw first
+  const sorted = [...tekus].sort((a, b) => a.y - b.y);
+  for (const t of sorted) t.draw();
+
+  // 3. Foreground (ground covers lower half of walking tekus naturally)
+  drawSceneForeground();
+
+  // Pile count in hole
+  const inHole = tekus.filter(t => t.inHole && !t.walking && !t.floating).length;
+  const walking = tekus.filter(t => t.walking && !t.floating).length;
+  const flying = tekus.filter(t => t.floating).length;
+  countEl.innerHTML = `穴の中: ${inHole}　歩行中: ${walking}　飛行中: ${flying}　旅立ち: ${totalEscaped}`;
+
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', () => { sz(); });
+</script>
+</body>
+</html>
